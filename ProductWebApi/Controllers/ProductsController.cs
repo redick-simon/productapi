@@ -16,12 +16,17 @@ namespace ProductWebApi.Controllers
 {
     public class ProductsController : ApiController
     {
-        private ProductDbEntities db = new ProductDbEntities();
+        private IProductService _service;
+
+        public ProductsController(IProductService service)
+        {
+            _service = service;
+        }
 
         // GET: api/Products
         public async Task<IHttpActionResult> GetProducts()
         {
-            var products = await db.Products.ToListAsync();
+            var products = await Task.FromResult(_service.GetProducts());
 
             return Ok(products);
         }
@@ -31,7 +36,7 @@ namespace ProductWebApi.Controllers
         [BasicAuthentication]
         public async Task<IHttpActionResult> GetProduct(int id)
         {
-            Product product = await db.Products.FindAsync(id);
+            Product product = await Task.FromResult(_service.GetProductById(id));
             if (product == null)
             {
                 return NotFound();
@@ -55,23 +60,12 @@ namespace ProductWebApi.Controllers
                 return BadRequest();
             }
 
-            db.Entry(product).State = EntityState.Modified;
+            if (!_service.ProductExists(id))
+            {
+                return NotFound();
+            }
 
-            try
-            {
-                await db.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!ProductExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
+            await Task.Run(() => _service.ModifyProduct(product));
 
             return StatusCode(HttpStatusCode.NoContent);
         }
@@ -86,8 +80,7 @@ namespace ProductWebApi.Controllers
                 return BadRequest(ModelState);
             }
 
-            db.Products.Add(product);
-            await db.SaveChangesAsync();
+            await Task.Run(() => _service.AddProduct(product));
 
             return CreatedAtRoute("DefaultApi", new { id = product.Id }, product);
         }
@@ -97,30 +90,16 @@ namespace ProductWebApi.Controllers
         [BasicAuthentication]
         public async Task<IHttpActionResult> DeleteProduct(int id)
         {
-            Product product = await db.Products.FindAsync(id);
-            if (product == null)
+            if (!_service.ProductExists(id))
             {
                 return NotFound();
             }
 
-            db.Products.Remove(product);
-            await db.SaveChangesAsync();
+            var product = _service.GetProductById(id);
+
+            await Task.Run(() => _service.DeleteProduct(product));
 
             return Ok(product);
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                db.Dispose();
-            }
-            base.Dispose(disposing);
-        }
-
-        private bool ProductExists(int id)
-        {
-            return db.Products.Count(e => e.Id == id) > 0;
         }
     }
 }
